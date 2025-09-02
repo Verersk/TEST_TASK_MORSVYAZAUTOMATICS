@@ -1,11 +1,13 @@
 #include <atomic>
 #include <array>
 #include <cstddef>
+#include <optional>
+#include <memory>
 
 template <typename T, std::size_t Capacity>
 class CircularQueue {
 private:
-    std::array<T, Capacity> buffer_;
+    std::array<std::optional<T>, Capacity> buffer_;         // Элементы изначально пустые, используем класс-обёртку std::optional
     std::atomic<std::size_t> head_{0};  // Индекс считывания 
     std::atomic<std::size_t> tail_{0};  // Индекс записи
 
@@ -47,9 +49,14 @@ public:
         if (head == tail_.load(std::memory_order_acquire)) {
             return false;  // Очередь пуста
         }
-        value = std::move(buffer_[head]);
-        head_.store((head + 1) % Capacity, std::memory_order_release);
-        return true;
+
+        if (buffer_[head].has_value()) {        // Проверяем есть ли значение в buffer_ по индексу head
+            value = std::move(buffer_[head].value());   // buffer_[head].value() - возвращает ссылку на содержащееся значение, move() - преобразует в rvalue ссылку, разрешая перемещение
+            buffer_[head].reset();      // Делает optional пустым после извлечения значения
+            head_.store((head + 1) % Capacity, std::memory_order_release);
+            return true;
+        }
+        return false;
     }
 
     // Проверяем пуста-ли очередь (не thread-safe, для отладки или использования в одном потоке)
